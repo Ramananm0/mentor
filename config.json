@@ -1,0 +1,15 @@
+{
+  "ollama_url": "http://localhost:11434",
+  "models": {
+    "big": "qwen3-coder:30b",
+    "fast": "qwen2.5-coder:7b",
+    "embed": "nomic-embed-text"
+  },
+  "default_model": "big",
+  "num_ctx": 16384,
+  "keep_alive": "30m",
+  "study_dir": "D:/study",
+  "skip_dirs": [".git", "graphify-out", "embedded-roadmap-app", "node_modules", "__pycache__"],
+  "rag_top_k": 4,
+  "history_keep": 20
+}
