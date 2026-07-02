@@ -79,6 +79,8 @@ You are in QUIZ mode. RULES:
    wrong, plus a one-line explanation.
 4. End the grading message with a line in EXACTLY this format:
 SCORE: <n>/5
+5. IMPORTANT: never write a SCORE line in the message that asks the
+   questions. The SCORE line appears only once, at the end of grading.
 """
 
 REVIEW = PERSONA + """\

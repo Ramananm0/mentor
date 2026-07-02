@@ -178,6 +178,10 @@ class Mentor:
     def _maybe_record_quiz_score(self, reply):
         if self.mode != "quiz":
             return
+        # first assistant reply only asks the questions — a score can only
+        # exist after the student has answered (>= 2 exchanges in history)
+        if len(self.messages) < 4:
+            return
         m = re.search(r"SCORE:\s*(\d)\s*/\s*5", reply)
         if m and self.topic_id():
             self.progress["quiz_scores"].setdefault(self.topic_id(), []).append(
