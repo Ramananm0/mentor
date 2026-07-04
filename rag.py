@@ -1,7 +1,12 @@
-"""Build and query a vector index of the study notes. Standard library only.
+"""Build and query a vector index of the study notes and reference library.
+Standard library only.
+
+Sources: cfg["study_dir"] plus every dir in cfg["extra_dirs"] (the downloaded
+books / docs / interview questions). Indexes .md, .txt (reST headings, e.g.
+Python docs), and .html (e.g. Beej's guide).
 
 Usage:
-    python rag.py build              # (re)index all D:\\study markdown files
+    python rag.py build              # (re)index everything
     python rag.py query "text" [k]   # test a search
 """
 
@@ -12,6 +17,7 @@ import os
 import re
 import sqlite3
 import sys
+from html.parser import HTMLParser
 
 from ollama_api import Ollama
 
@@ -52,13 +58,94 @@ def _normalize(vec):
     return [x / norm for x in vec]
 
 
-def _study_files(cfg):
+class _HTMLText(HTMLParser):
+    """HTML -> text with h1-h3 turned into #/##/### lines."""
+
+    SKIP = {"script", "style", "nav", "head"}
+    BLOCK = {"p", "div", "li", "pre", "tr", "br", "ul", "ol", "table", "blockquote"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out = []
+        self._skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.SKIP:
+            self._skip += 1
+        elif tag in ("h1", "h2", "h3"):
+            self.out.append("\n\n" + "#" * int(tag[1]) + " ")
+        elif tag in self.BLOCK:
+            self.out.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in self.SKIP:
+            self._skip = max(0, self._skip - 1)
+        elif tag in ("h1", "h2", "h3"):
+            self.out.append("\n")
+
+    def handle_data(self, data):
+        if not self._skip:
+            self.out.append(data)
+
+
+def html_to_md(html):
+    parser = _HTMLText()
+    parser.feed(html)
+    text = "".join(parser.out)
+    # headings must stay on one line for chunk_markdown
+    text = re.sub(r"(?m)^(#{1,3} )[ \t]*\n[ \t]*", r"\1", text)
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
+def rst_to_md(text):
+    """Turn reST underlined headings (Python text docs) into # headings."""
+    lines = text.splitlines()
+    out = []
+    i = 0
+    while i < len(lines):
+        line, nxt = lines[i], lines[i + 1] if i + 1 < len(lines) else ""
+        under = nxt.strip()
+        if (
+            line.strip()
+            and not line.startswith(" ")
+            and len(under) >= 3
+            and len(set(under)) == 1
+            and under[0] in "*=-~^\""
+            and len(under) >= len(line.rstrip())
+        ):
+            level = {"*": 1, "=": 1, "-": 2}.get(under[0], 3)
+            out.append("#" * level + " " + line.strip())
+            i += 2
+            continue
+        out.append(line)
+        i += 1
+    return "\n".join(out)
+
+
+def _source_files(cfg):
+    """Yield (label, path) for every indexable file across all source dirs.
+    label = '<root-name>/<relative-path>' so chunks say where they came from."""
     skip = set(cfg["skip_dirs"])
-    for root, dirs, files in os.walk(cfg["study_dir"]):
-        dirs[:] = [d for d in dirs if d not in skip and not d.startswith(".")]
-        for fname in sorted(files):
-            if fname.endswith(".md"):
-                yield os.path.join(root, fname)
+    roots = [cfg["study_dir"]] + cfg.get("extra_dirs", [])
+    for root_dir in roots:
+        prefix = os.path.basename(os.path.normpath(root_dir))
+        for root, dirs, files in os.walk(root_dir):
+            dirs[:] = [d for d in dirs if d not in skip and not d.startswith(".")]
+            for fname in sorted(files):
+                if fname.endswith((".md", ".txt", ".html")):
+                    path = os.path.join(root, fname)
+                    rel = os.path.relpath(path, root_dir).replace("\\", "/")
+                    yield f"{prefix}/{rel}", path
+
+
+def _read_as_markdown(path):
+    with open(path, encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    if path.endswith(".html"):
+        return html_to_md(text)
+    if path.endswith(".txt"):
+        return rst_to_md(text)
+    return text
 
 
 def build():
@@ -67,13 +154,11 @@ def build():
     embed_model = cfg["models"]["embed"]
 
     rows = []  # (file, heading, content)
-    for path in _study_files(cfg):
-        rel = os.path.relpath(path, cfg["study_dir"]).replace("\\", "/")
-        with open(path, encoding="utf-8", errors="replace") as f:
-            for heading, body in chunk_markdown(f.read()):
-                rows.append((rel, heading, body))
+    for label, path in _source_files(cfg):
+        for heading, body in chunk_markdown(_read_as_markdown(path)):
+            rows.append((label, heading, body))
     if not rows:
-        sys.exit(f"no markdown files found under {cfg['study_dir']}")
+        sys.exit("no indexable files found in study_dir / extra_dirs")
 
     conn = sqlite3.connect(DB_PATH)
     conn.execute("DROP TABLE IF EXISTS chunks")

@@ -9,6 +9,7 @@
   "num_ctx": 16384,
   "keep_alive": "30m",
   "study_dir": "D:/study",
+  "extra_dirs": ["D:/mentor/library"],
   "skip_dirs": [".git", "graphify-out", "embedded-roadmap-app", "node_modules", "__pycache__"],
   "rag_top_k": 4,
   "history_keep": 20
