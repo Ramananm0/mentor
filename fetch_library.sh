@@ -12,6 +12,25 @@ trap 'rm -rf "$tmp"' EXIT
 echo "Beej's Guide to C (single-page HTML)..."
 curl -s https://beej.us/guide/bgc/html/ -o library/c/beej_guide_to_c.html
 
+echo "Beej's C Library Reference (stdlib functions, single-page HTML)..."
+curl -s https://beej.us/guide/bgclr/html/ -o library/c/beej_c_library_reference.html \
+  || echo "  [skip: bgclr unavailable]"
+
+echo "GNU C Intro & Reference manual (full C language, GFDL)..."
+curl -s https://www.gnu.org/software/c-intro-and-ref/manual/c-intro-and-ref.html \
+  -o library/c/gnu_c_intro_and_ref.html || echo "  [skip: GNU manual unavailable]"
+
+echo "Ted Jensen's Tutorial on Pointers and Arrays..."
+git clone --depth 1 --quiet https://github.com/jflaherty/ptrtut13.git "$tmp/ptrtut" \
+  && mkdir -p library/c/pointer-tutorial \
+  && find "$tmp/ptrtut" \( -name "*.md" -o -name "*.txt" -o -name "*.html" \) \
+       -not -path "*/.git/*" -exec cp {} library/c/pointer-tutorial/ \; \
+  || echo "  [skip: ptrtut13 unavailable]"
+
+echo "Wikibooks: C Programming (full book, single page, CC-BY-SA)..."
+curl -s "https://en.wikibooks.org/wiki/C_Programming/Print_version" \
+  -o library/c/wikibooks_c_programming.html || echo "  [skip: wikibooks unavailable]"
+
 echo "C++ Core Guidelines..."
 curl -s https://raw.githubusercontent.com/isocpp/CppCoreGuidelines/master/CppCoreGuidelines.md \
   -o library/cpp/cpp_core_guidelines.md

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local AI Mentor</title>
+<style>
+  :root {
+    --bg: #0f1218; --panel: #171c26; --panel2: #1e2532; --border: #2a3344;
+    --text: #dbe2ee; --dim: #8794a8; --accent: #4da3ff; --green: #3ecf8e;
+    --student: #24304a; --mentor: #1b2230; --yellow: #ffd166;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); height: 100vh; display: flex;
+    font: 15px/1.5 "Segoe UI", system-ui, sans-serif; overflow: hidden;
+  }
+  /* ---- sidebar ---- */
+  #side {
+    width: 270px; min-width: 270px; background: var(--panel);
+    border-right: 1px solid var(--border); padding: 16px;
+    display: flex; flex-direction: column; gap: 14px; overflow-y: auto;
+  }
+  #side h1 { font-size: 17px; color: var(--accent); }
+  #side h1 small { display:block; color: var(--dim); font-size: 11px; font-weight: normal; }
+  .group { display: flex; flex-direction: column; gap: 6px; }
+  .group label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  button, select, input, textarea {
+    font: inherit; color: var(--text); background: var(--panel2);
+    border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.active { background: var(--accent); color: #08111f; font-weight: 600; }
+  button.go { background: var(--green); color: #06281a; font-weight: 600; }
+  #reviewBox { display: none; }
+  #reviewBox textarea { width: 100%; height: 110px; resize: vertical; font-family: Consolas, monospace; font-size: 12.5px; }
+  #nextTopic { color: var(--yellow); font-size: 13px; }
+  #summary { white-space: pre; font-family: Consolas, monospace; font-size: 12px; color: var(--dim); }
+  .row { display: flex; gap: 6px; }
+  .row > * { flex: 1; min-width: 0; }
+  /* ---- main ---- */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #topbar {
+    padding: 10px 18px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; background: var(--panel);
+  }
+  #statusPill {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 999px;
+    font-size: 12.5px; padding: 4px 12px; color: var(--dim);
+  }
+  #statusPill b { color: var(--text); }
+  #chat { flex: 1; overflow-y: auto; padding: 20px 8%; display: flex; flex-direction: column; gap: 12px; }
+  .msg { padding: 10px 14px; border-radius: 12px; max-width: 88%; overflow-wrap: break-word; }
+  .msg.student { background: var(--student); align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.mentor  { background: var(--mentor); align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid var(--border); }
+  .msg.note    { background: none; color: var(--yellow); font-size: 12.5px; align-self: center; }
+  .msg pre {
+    background: #0b0e14; border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px; overflow-x: auto; margin: 8px 0;
+    font: 13px/1.45 Consolas, monospace;
+  }
+  .msg code { font-family: Consolas, monospace; font-size: 13px; background: #0b0e14; padding: 1px 5px; border-radius: 4px; }
+  .msg pre code { background: none; padding: 0; }
+  .msg .cursor { display: inline-block; width: 8px; background: var(--accent); animation: blink .8s infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #inputBar { display: flex; gap: 10px; padding: 14px 8%; border-top: 1px solid var(--border); background: var(--panel); }
+  #inputBar textarea { flex: 1; resize: none; height: 52px; }
+  #sendBtn { width: 90px; background: var(--accent); color: #08111f; font-weight: 600; }
+  #sendBtn:disabled { opacity: .5; cursor: wait; }
+</style>
+</head>
+<body>
+
+<div id="side">
+  <h1>Local AI Mentor<small>C · C++ · Python — fully offline</small></h1>
+
+  <div class="group">
+    <label>Mode</label>
+    <div class="modes">
+      <button id="m-ask"    class="active" onclick="setMode('ask')">Ask</button>
+      <button id="m-teach"  onclick="setMode('teach')">Teach</button>
+      <button id="m-quiz"   onclick="setMode('quiz')">Quiz</button>
+      <button id="m-review" onclick="setMode('review')">Review</button>
+    </div>
+  </div>
+
+  <div class="group" id="topicBox">
+    <label>Topic (blank = next in plan)</label>
+    <div class="row">
+      <input id="topicInput" placeholder="e.g. C-08 or malloc">
+      <button class="go" style="flex:0 0 62px" onclick="startMode()">Start</button>
+    </div>
+  </div>
+
+  <div class="group" id="reviewBox">
+    <label>Paste code to review</label>
+    <input id="reviewName" placeholder="filename (optional)">
+    <textarea id="reviewCode" placeholder="paste your C / C++ / Python code here"></textarea>
+    <button class="go" onclick="startMode()">Review it</button>
+  </div>
+
+  <div class="group">
+    <label>Next in plan</label>
+    <div id="nextTopic">…</div>
+  </div>
+
+  <div class="group">
+    <label>Settings</label>
+    <div class="row">
+      <select id="modelSel" onchange="command('model', this.value)">
+        <option value="big">big (30b)</option>
+        <option value="fast">fast (7b)</option>
+      </select>
+      <select id="subjectSel" onchange="command('subject', this.value)">
+        <option value="c">C</option>
+        <option value="cpp">C++</option>
+        <option value="python">Python</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="group">
+    <label>Mark topic done</label>
+    <div class="row">
+      <input id="doneInput" placeholder="e.g. C-08">
+      <button style="flex:0 0 62px" onclick="command('done', doneInput.value)">Done</button>
+    </div>
+  </div>
+
+  <div class="group">
+    <label>Progress</label>
+    <div id="summary">…</div>
+  </div>
+
+  <button onclick="command('save','')">💾 Save transcript</button>
+</div>
+
+<div id="main">
+  <div id="topbar">
+    <span id="statusPill">mode <b id="stMode">ask</b> · topic <b id="stTopic">(none)</b> · model <b id="stModel">…</b></span>
+  </div>
+  <div id="chat"></div>
+  <div id="inputBar">
+    <textarea id="input" placeholder="Ask anything… (Enter to send, Shift+Enter for newline)"></textarea>
+    <button id="sendBtn" onclick="send()">Send</button>
+  </div>
+</div>
+
+<script>
+const chat = document.getElementById('chat');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+let uiMode = 'ask';
+
+/* ---------- tiny markdown: ```code```, `inline`, **bold** ---------- */
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function render(md) {
+  const parts = md.split(/```(\w*)\n?/);
+  let html = '', inCode = false;
+  for (let i = 0; i < parts.length; i++) {
+    if (inCode) { html += '<pre><code>' + esc(parts[i]) + '</code></pre>'; inCode = false; }
+    else if (i % 2 === 1) { inCode = true; }           // language tag slot
+    else {
+      html += esc(parts[i])
+        .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
+        .replace(/\n/g, '<br>');
+    }
+  }
+  return html;
+}
+
+function bubble(cls, html) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + cls;
+  div.innerHTML = html;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+/* ---------- state ---------- */
+async function refreshState(st) {
+  if (!st) st = await (await fetch('/api/state')).json();
+  document.getElementById('stMode').textContent = st.mode;
+  document.getElementById('stTopic').textContent = st.topic;
+  document.getElementById('stModel').textContent = st.model;
+  document.getElementById('nextTopic').textContent = st.next_topic || 'all done 🎉';
+  document.getElementById('summary').textContent =
+    st.summary.split('\n').slice(0, 30).join('\n');
+  document.getElementById('modelSel').value = st.model_key;
+  document.getElementById('subjectSel').value = st.subject;
+}
+
+/* ---------- modes ---------- */
+function setMode(m) {
+  uiMode = m;
+  for (const x of ['ask','teach','quiz','review'])
+    document.getElementById('m-'+x).classList.toggle('active', x === m);
+  document.getElementById('topicBox').style.display  = (m==='teach'||m==='quiz') ? '' : 'none';
+  document.getElementById('reviewBox').style.display = (m==='review') ? '' : 'none';
+  if (m === 'ask') command('ask','');
+}
+
+async function startMode() {
+  const payload = { cmd: uiMode, arg: document.getElementById('topicInput').value };
+  if (uiMode === 'review') {
+    payload.name = document.getElementById('reviewName').value;
+    payload.code = document.getElementById('reviewCode').value;
+  }
+  const out = await (await fetch('/api/command', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  })).json();
+  if (out.error) { bubble('note', esc(out.error)); return; }
+  if (out.note) bubble('note', esc('[' + out.note + ']'));
+  refreshState(out.state);
+  if (out.kickoff) streamChat(out.kickoff, /*showStudent=*/false);
+}
+
+async function command(cmd, arg) {
+  const out = await (await fetch('/api/command', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ cmd, arg })
+  })).json();
+  bubble('note', esc('[' + (out.error || out.note) + ']'));
+  refreshState(out.state);
+}
+
+/* ---------- chat ---------- */
+async function streamChat(text, showStudent = true) {
+  if (showStudent) bubble('student', render(text));
+  sendBtn.disabled = true;
+  const div = bubble('mentor', '<span class="cursor">&nbsp;</span>');
+  let acc = '';
+  try {
+    const resp = await fetch('/api/chat', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ text })
+    });
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      acc += dec.decode(value, { stream: true });
+      div.innerHTML = render(acc) + '<span class="cursor">&nbsp;</span>';
+      chat.scrollTop = chat.scrollHeight;
+    }
+  } catch (e) {
+    acc += '\n[connection error — is web.py still running?]';
+  }
+  div.innerHTML = render(acc);
+  sendBtn.disabled = false;
+  refreshState();
+  input.focus();
+}
+
+function send() {
+  const text = input.value.trim();
+  if (!text || sendBtn.disabled) return;
+  input.value = '';
+  streamChat(text);
+}
+
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+refreshState();
+bubble('note', 'Welcome back! Pick a mode on the left, or just type below (Ask mode gives hints first, not answers).');
+setMode('ask');
+</script>
+</body>
+</html>

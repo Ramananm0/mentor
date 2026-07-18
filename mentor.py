@@ -12,6 +12,7 @@ import os
 import re
 import sys
 
+import memory
 import progress as prog
 import prompts
 import rag
@@ -132,6 +133,9 @@ class Mentor:
             f"\nSubject focus: {self.subject}. Current topic: {self.topic_label()}."
         )
         msgs = [{"role": "system", "content": head}]
+        remembered = memory.system_block(self.progress)
+        if remembered:
+            msgs.append({"role": "system", "content": remembered})
         if self.extra_context:
             msgs.append({"role": "system", "content": self.extra_context})
         elif self.mode in ("ask", "teach", "quiz"):
@@ -374,6 +378,11 @@ class Mentor:
         path = self.save_session()
         if path:
             print(dim(f"[transcript saved: {path}]"))
+        notes = memory.observe_session(
+            self.cfg, self.transcript, self.mode, self.topic_label()
+        )
+        for n in notes:
+            print(dim(f"[remembered: {n}]"))
 
 
 if __name__ == "__main__":
